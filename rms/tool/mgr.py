@@ -22,12 +22,15 @@ else:
 
 import settings
 from web.execute import Slurp
+from datetime import datetime
 
-
-class Session(object):
+class Session(Slurp):
     def __init__(self, host):
         self.host = host
+        
         self.seq = 0
+        self.session_id = str(datetime.now()) 
+        self.user = "admin"
         
         self.cmds = []
         self.results = []
@@ -35,11 +38,18 @@ class Session(object):
     def send_cmd(self, cmd):
         pass
     
+    def get_result(self, kind, upcallInfo, **kwargs):
+        pass
+    
+    def encrypt(self, msg):
+        return msg
 
 class Go(object):
     def __init__(self, hosts, **kwargs):
         self.hosts = hosts
-    
+        self.sessions = [Session(host=host) for host in self.hosts]
+        
+        
     def read(self):
         pass
     
@@ -47,7 +57,8 @@ class Go(object):
         pass
     
     def go(self, cmd):
-        pass
+        for session in self.sessions:
+            session.send_cmd(cmd)
     
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Configure the arguments")
