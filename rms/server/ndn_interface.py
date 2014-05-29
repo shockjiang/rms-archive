@@ -5,7 +5,7 @@ import pyndn
 
 from settings import log
 
-class rmsInterface(pyndn.Closure):
+class rmsServerInterface(pyndn.Closure):
 	def __init__(self, name):
 		self.handle = pyndn.NDN()
 		self.name = pyndn.Name(name)
@@ -45,8 +45,7 @@ class rmsInterface(pyndn.Closure):
 		return co
 
 	def handleRequest(self, interest):
-		log.info("handleRequest: %s"%interest.name)
-		return (0, self.prepareContent("ok", interest.name, self.handle.getDefaultKey()))
+		raise NotImplementedError
 
 	# Called when we receive interest
 	# once data is sent signal ndn_run() to exit
@@ -54,17 +53,17 @@ class rmsInterface(pyndn.Closure):
 		if kind != pyndn.UPCALL_INTEREST:
 			return pyndn.RESULT_OK
 
-		ret, content = self.handleRequest(info.Interest)
-		if ret != 0:
+		content = self.handleRequest(info.Interest)
+		if content == None:
 			return pyndn.RESULT_OK
 
-		# print("content: %s"% content)
 		self.handle.put(content) # send the prepared data
 		# self.handle.setRunTimeout(0) # finish run() by changing its timeout to 0
 
 		return pyndn.RESULT_INTEREST_CONSUMED
 
 	def start(self):
+		log.info("listening on %s"% self.name)
 		# register our name, so upcall is called when interest arrives
 		self.handle.setInterestFilter(self.name, self)
 
@@ -72,18 +71,3 @@ class rmsInterface(pyndn.Closure):
 		# doesn't require it as well)
 		# -1 means wait forever
 		self.handle.run(-1)
-
-
-if __name__ == '__main__':
-	def usage():
-		print("Usage: %s <uri>" % sys.argv[0])
-		sys.exit(1)
-
-	if len(sys.argv) != 2:
-		usage()
-
-	name = sys.argv[1]
-
-	put = rmsInterface(name)
-	put.start()
-

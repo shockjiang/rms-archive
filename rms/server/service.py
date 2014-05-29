@@ -1,66 +1,84 @@
 #!/usr/bin/env python
 #encoding: utf-8
 
-import base64
+import json
 import urllib
 import subprocess
 
 import ndn_interface
 from settings import log
 
-RESULT_EXCEPTION = -1
-RESULT_OK = 0
-RESULT_INVALID_PARAM = 1
+STATUS_OK = 200
+STATUS_AUTH_ERROR = 403
+STATUS_INTERNAL_ERROR = 500
+STATUS_CUSTOM_ERROR = 700
 
-class rmsService(ndn_interface.rmsInterface):
-
+class rmsServerBase(ndn_interface.rmsServerInterface):
     """Service base class for resources management system"""
 
-    def __init__(self, service_name):
-        self.service_prefix = service_name
-        super(rmsService, self).__init__(service_name)
+    def __init__(self, host, service_name):
+        self.service_prefix = '/{}/rms/{}/'.format(host,service_name)
+        super(rmsServerBase, self).__init__(self.service_prefix)
 
-    def doCommand(self):
-        return ''
+    def OnDataRecv(self, data):
+        raise NotImplementedError
+
+    def buildResponse(self, interest, seq, status, content):
+        ret = '{} {} {}'.format(seq, status, content)
+        return self.prepareContent(ret, interest.name, self.handle.getDefaultKey());
+
+    def doAuth(self, param):
+        return None
+
+    def doHandshake(self, param):
+        return None
+
+    def checkSession(self, session):
+        return True
+
+    def _encrypt(self, data):
+        return urllib.quote(data)
+
+    def _decrypt(self, data):
+        return urllib.unquote(data)
 
     def handleRequest(self, interest):
         length = len(self.service_prefix)
+
         iname = str(interest.name)
-        assert(iname[0:length] == self.service_prefix)
+        assert(iname.startswith(self.service_prefix))
 
-        args = iname[length:] if self.service_prefix[-1] =='/' else iname[length + 1:]
-        args = args.split('/')
+        args = iname[length:].split('/')
 
-        try:
-            print(args)
-            result = self.doCommand(*args)
-            if result == None:
-                raise ValueError()
-            return (RESULT_OK, self.prepareContent(result, interest.name, self.handle.getDefaultKey()))
-        except Exception, e:
-            log.error(e)
+        if args[0] == 'handshake':
+            return doHandshake(args)
+        elif args[0] == 'auth':
+            return doAuth(args)
+        elif len(args) == 3:
 
-        return (RESULT_EXCEPTION, '')
+            if not self.checkSession(args[0]):
+                return self.buildResponse(interest, args[1], STATUS_AUTH_ERROR, '')
 
-class CmdService(rmsService):
-    """Provide command executing"""
+            try:
+                result, status = self.OnDataRecv(self._decrypt(args[2]))
+                return self.buildResponse(interest, args[1], status, self._encrypt(result))
+            except Exception, e:
+                log.error(e)
+
+            return self.buildResponse(interest, args[1], STATUS_INTERNAL_ERROR, '')
+
+        return None
+
+class CmdService(rmsServerBase):
+    """Provide command executing service"""
+    SERVICE_NAME = "Cmd"
     def __init__(self, host):
-        super(CmdService, self).__init__('/'+host+"/rms/cmd")
+        super(CmdService, self).__init__(host, CmdService.SERVICE_NAME)
 
-    def doCommand(self, enc, cmd):
-        if enc == 'base64':
-            cmd = base64.b64decode(cmd);    
-        elif enc == 'url':
-            cmd = urllib.unquote(cmd)
-        else:
-            log.error("CmdService: Unknown encoding")
-            return 'Unknown encoding'
-
-        output = subprocess.check_output(cmd, shell=True)
-
-        return output
-
-
-if __name__ == '__main__':
-    s = rmsService("/local/rms/cmd")
-    s.start()
+    def OnDataRecv(self, data):
+        try:
+            output = subprocess.check_output(data, shell=True)
+            return output, STATUS_OK
+        except subprocess.CalledProcessError, e:
+            log.warn(e)
+            return '', STATUS_OK
