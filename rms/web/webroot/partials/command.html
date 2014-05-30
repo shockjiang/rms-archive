@@ -1,0 +1,62 @@
+<div>
+    <div class="row">
+        <div class="col-lg-12">
+            <h1 class="page-header">Remote Command Line</h1>
+        </div>
+    </div>
+    <div class="row">
+        <div class="col-lg-4">
+            <div ng-include src="'partials/host_select.html'"></div>
+        </div>
+        <div class="col-lg-8">
+            <div class="panel panel-default" ng-controller="CmdResult">
+                <div class="panel-heading">
+                    <i class="fa fa-list-ul fa-fw"></i> Result
+                </div>
+                <div class="panel-body">
+                  <accordion close-others="true">
+                    <accordion-group is-open="$first" ng-repeat="result in cmdresults">
+                    <accordion-heading>
+                    {{result.title}}
+                    </accordion-heading>
+                    <pre>{{result.content}}</pre>
+                    </accordion-group>
+                  </accordion>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="row">
+        <div class="col-lg-12">
+            <div class="panel panel-default" ng-controller="CmdLine">
+                <div class="panel-heading">
+                    <i class="fa fa-bell fa-fw"></i> Command
+                </div>
+                <div class="panel-body">
+                    <div class="col-lg-11">
+                        <div class="input-group">
+                          <input type="text" ng-model="inputcmd" placeholder="Some command here..." class="form-control">
+                          <span class="input-group-btn">
+                            <button class="btn btn-default" type="button" ng-click="onexecute()">Execute</button>
+                          </span>
+                        </div>
+                    </div>
+                    <div class="col-lg-1">
+                        <div class="btn-group" dropdown>
+                          <button type="button" class="btn btn-default dropdown-toggle">
+                            <i class="fa fa-history"></i> <span class="caret"></span>
+                          </button>
+                          <ul class="dropdown-menu" role="menu">
+                            <li><a href="#">Action</a></li>
+                            <li><a href="#">Another action</a></li>
+                            <li><a href="#">Something else here</a></li>
+                            <li class="divider"></li>
+                            <li><a href="#">Separated link</a></li>
+                          </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

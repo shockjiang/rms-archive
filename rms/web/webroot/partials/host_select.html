@@ -1,0 +1,17 @@
+<div class="panel panel-default" ng-init="hostmodel.reload_hosts()" ng-controller="HostSelection">
+    <div class="panel-heading">
+        <i class="fa fa-desktop fa-fw"></i> Host Selection
+    </div>
+    <div class="panel-body">
+        <div class="list-group">
+            <span href="#" class="list-group-item">
+                <input type="checkbox" ng-model="allselected" ng-change="onallchecked()"> All
+            </span>
+            <span href="#" class="list-group-item" ng-repeat="host in hostmodel.hosts">
+                <input type="checkbox" ng-model="host.selected" ng-change="onitemchanged()"> {{host.name}}
+                <span class="pull-right text-muted small"><i class="fa fa-fw" ng-class="host.status | status2icon"></i>
+                </span>
+            </span>
+        </div>
+    </div>
+</div>
