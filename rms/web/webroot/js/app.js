@@ -94,7 +94,6 @@ rmsApp.factory('CmdResultModel', function(){
             title: 'Result of '+host,
             content: result
         })
-        console.log(this.results)
     }
     return new model()
 })
