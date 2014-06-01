@@ -20,22 +20,33 @@ class rmsCmdClient(ndn_client.rmsClientBase):
 
 
 def usage():
-    print("Usage: %s <hostname> <cmd>" % sys.argv[0])
+    print("Usage: %s <hostname> [cmd ...]" % sys.argv[0])
     sys.exit(1)
 
 if __name__ == '__main__':
     """Demo of rmsCmdClient"""
 
-    if (len(sys.argv) != 3):
+    if (len(sys.argv) < 2):
         usage()
 
     client = None
     with open('common/testkey.pem') as f:
         client = rmsCmdClient(sys.argv[1], f.read())
 
-    client.Connect(4000)
+    client.Connect(6.0)
     if client.IsConnected():
-        print(client.ExecuteWait(sys.argv[2], 5000))
+        if len(sys.argv) >= 3:
+            for x in xrange(len(sys.argv)-2):
+                print(client.ExecuteWait(sys.argv[2 + x], 5.0))
+        else:
+            while True:
+                try:
+                    cmd = raw_input('$')
+                    if not cmd: break
+                except:
+                    break
+                print(client.ExecuteWait(cmd, 5.0))
     else:
         print('Failed to connect')
 
+    client.Stop()
