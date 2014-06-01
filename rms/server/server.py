@@ -3,6 +3,7 @@
 
 import signal
 import service
+import sys
 
 from settings import get_host,log
     
@@ -15,5 +16,6 @@ if __name__ == "__main__":
     signal.signal(signal.SIGINT, signal_handler)
     log.debug("RMS server started!")
     h = get_host()
-    s = service.CmdService(h)
+    with open('common/testkey.pub') as f:
+        s = service.CmdService(h, f.read())
     s.start()

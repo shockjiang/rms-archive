@@ -4,7 +4,9 @@ from binascii import hexlify, unhexlify
 import hashlib
 
 import Crypto.Cipher.PKCS1_OAEP as PKCS1_OAEP
+import Crypto.Cipher.AES as AES
 import Crypto.PublicKey.RSA as RSA
+import Crypto.Random
 
 import Crypto.Random.random
 secure_random = Crypto.Random.random.getrandbits
@@ -170,6 +172,27 @@ class Auth(object):
             raise ValueError
         self.preMasterKey = long(d[len(Auth.MAGIC):], 0)
 
+
+class AESCipher(object):
+    """AES encryption algorithm"""
+    def __init__( self, key ):
+        self.key = key
+        BS = AES.block_size
+        self.pad = lambda s: s + (BS - len(s) % BS) * chr(BS - len(s) % BS) 
+        self.unpad = lambda s : s[0:-ord(s[-1])]
+
+    def encrypt( self, raw ):
+        raw = self.pad(raw)
+        iv = Crypto.Random.new().read( AES.block_size )
+        cipher = AES.new( self.key, AES.MODE_CBC, iv )
+        return hexlify( iv + cipher.encrypt( raw ) ) 
+
+    def decrypt( self, enc ):
+        enc = unhexlify(enc)
+        iv = enc[:AES.block_size]
+        cipher = AES.new(self.key, AES.MODE_CBC, iv )
+        return self.unpad(cipher.decrypt( enc[AES.block_size:] ))  
+
 if __name__ == "__main__":
 
     client = Auth()
@@ -193,3 +216,11 @@ if __name__ == "__main__":
 
     assert(masterKeyC == masterKeyS)
     print("Master keys are equal!")
+
+    plaintext = b'Attack at dawn'
+    aes = AESCipher(masterKeyC)
+    ciphertext = aes.encrypt(plaintext)
+    print("Encrypted message: {}".format(ciphertext))
+    plaintext = aes.decrypt(ciphertext)
+    print("Decrypted message: {}".format(plaintext))
+

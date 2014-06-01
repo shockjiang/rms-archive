@@ -4,7 +4,9 @@
 import json
 import urllib
 import subprocess
+from binascii import hexlify, unhexlify
 
+import common.security as security
 import ndn_interface
 from settings import log
 
@@ -16,8 +18,10 @@ STATUS_CUSTOM_ERROR = 700
 class rmsServerBase(ndn_interface.rmsServerInterface):
     """Service base class for resources management system"""
 
-    def __init__(self, host, service_name):
+    def __init__(self, host, service_name, pubFile):
         self.service_prefix = '/{}/rms/{}/'.format(host,service_name)
+        self.cipher = None
+        self.pubFile = pubFile
         super(rmsServerBase, self).__init__(self.service_prefix)
 
     def OnDataRecv(self, data):
@@ -27,20 +31,28 @@ class rmsServerBase(ndn_interface.rmsServerInterface):
         ret = '{} {} {}'.format(seq, status, content)
         return self.prepareContent(ret, interest.name, self.handle.getDefaultKey());
 
-    def doAuth(self, param):
-        return None
+    def doAuth(self, param, interest):
+        try:
+            auth = security.Auth()
+            auth.setOtherDHKey(long(param[1], 0))
+            randS, preMaster = auth.getDHKey(), auth.genPreMasterKey(self.pubFile)
+            self.cipher = security.AESCipher(auth.genMasterKey())
+            ret = json.dumps(dict(randS = hex(randS), preMaster = hexlify(preMaster)))
+        except Exception, e:
+            ret = ''
+        return self.prepareContent(ret, interest.name, self.handle.getDefaultKey());
 
-    def doHandshake(self, param):
+    def doHandshake(self, param, interest):
         return None
 
     def checkSession(self, session):
         return True
 
     def _encrypt(self, data):
-        return urllib.quote(data)
+        return self.cipher.encrypt(data)
 
     def _decrypt(self, data):
-        return urllib.unquote(data)
+        return self.cipher.decrypt(data)
 
     def handleRequest(self, interest):
         length = len(self.service_prefix)
@@ -51,9 +63,9 @@ class rmsServerBase(ndn_interface.rmsServerInterface):
         args = iname[length:].split('/')
 
         if args[0] == 'handshake':
-            return doHandshake(args)
+            return self.doHandshake(args, interest)
         elif args[0] == 'auth':
-            return doAuth(args)
+            return self.doAuth(args, interest)
         elif len(args) == 3:
 
             if not self.checkSession(args[0]):
@@ -72,8 +84,8 @@ class rmsServerBase(ndn_interface.rmsServerInterface):
 class CmdService(rmsServerBase):
     """Provide command executing service"""
     SERVICE_NAME = "Cmd"
-    def __init__(self, host):
-        super(CmdService, self).__init__(host, CmdService.SERVICE_NAME)
+    def __init__(self, host, pubFile):
+        super(CmdService, self).__init__(host, CmdService.SERVICE_NAME, pubFile)
 
     def OnDataRecv(self, data):
         try:
