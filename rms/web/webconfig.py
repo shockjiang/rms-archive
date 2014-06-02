@@ -4,3 +4,5 @@
 DATABASE = 'db/rms.db'
 DEBUG = True
 LISTEN_IP = '0.0.0.0'
+
+PRIVATE_KEY_FILE = 'common/testkey.pem'

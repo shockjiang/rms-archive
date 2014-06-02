@@ -39,11 +39,13 @@ def add_header(response):
     return response
 
 
+#handle static files
 @app.route('/<regex("(js|css|partials|font-awesome|fonts)"):d>/<path:path>', methods=['GET'])
 def static_proxy(d, path):
     return send_from_directory('webroot/' + d, path)
 
 
+#==========host related operations==========
 @app.route('/api/hostlist')
 def api_hostlint():
     with closing(connect_db()) as db:
@@ -53,11 +55,14 @@ def api_hostlint():
     abort(500)
 
 
+#==========command related operations==========
 @app.route('/api/execute/<host>/<cmd>')
 def api_execute(host, cmd):
     try:
-        client = execute.rmsCmdClient(str(host))
-        ret = client.ExecuteWait(str(cmd), 5000)
+        with open(webconfig.PRIVATE_KEY_FILE) as f:
+            client = execute.rmsCmdClient(str(host), f.read())
+        client.Connect(6.0)
+        ret = client.ExecuteWait(str(cmd), 5.0)
         if ret == None:
             raise ValueError
         return json.dumps(dict(text=ret))

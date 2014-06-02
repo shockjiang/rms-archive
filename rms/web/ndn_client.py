@@ -5,6 +5,7 @@ import Queue
 import thread
 import json
 import urllib
+import time
 from binascii import hexlify, unhexlify
 
 import pyndn
@@ -83,10 +84,14 @@ class rmsClientBase(object):
         self.pemFile = pemFile
         self.cipher = None
 
+        self.thread_started = False
         thread.start_new_thread(self._ndn_thread, tuple())
+        while not self.thread_started:
+            time.sleep(0)
 
     def _ndn_thread(self):
         self.ndn_interface = rmsClientInterface(self.recv_queue)
+        self.thread_started = True
         self.ndn_interface.start()
 
     def _encrypt(self, data):
