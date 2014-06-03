@@ -2,6 +2,7 @@
 # -*- coding=utf-8 -*-
 
 DATABASE = 'db/rms.db'
+UPLOAD_DIR = 'upload'
 DEBUG = True
 LISTEN_IP = '0.0.0.0'
 

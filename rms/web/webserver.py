@@ -5,8 +5,11 @@ import os
 import sqlite3
 import json
 from contextlib import closing
+from binascii import hexlify, unhexlify
+import hashlib
 
 from flask import Flask, send_from_directory, url_for, abort
+from flask import request
 from werkzeug.routing import BaseConverter
 
 import webconfig
@@ -70,7 +73,65 @@ def api_execute(host, cmd):
         print(e)
         abort(500)
 
+#==========content management related operations==========
+@app.route('/api/content/<hosts>/<Filter>', methods=['GET'])
+@app.route('/api/content/<hosts>', methods=['GET'])
+@app.route('/api/content', methods=['GET'])
+def api_content_list(hosts = '', Filter = None):
+    hosts = hosts.split(',')
+    result = []
+    with closing(connect_db()) as db:
+        placeholders = ','.join('?'*len(hosts))
+        sql = 'SELECT DISTINCT content.name FROM content JOIN hosts ON (hosts.id = content.host_id) WHERE hosts.name IN (%s)' % placeholders
+        if Filter:
+            Filter = unhexlify(Filter)
+            sql += ' AND content.name LIKE ?'
+            hosts.append(str(Filter)+'%')
 
+        cur = db.execute(sql, hosts)
+        entries = [dict(c=row[0]) for row in cur.fetchall()]
+        return json.dumps(entries)
+
+@app.route('/api/content/<hosts>/<name>', methods=['DELETE'])
+def api_content_del(hosts, name):
+    hosts = hosts.split(',')
+    with closing(connect_db()) as db:
+        placeholders = ','.join('?'*len(hosts))
+        sql = 'DELETE FROM content WHERE id IN (SELECT content.id FROM content JOIN hosts ON (hosts.id = content.host_id) WHERE hosts.name IN (%s) AND content.name=?)' % placeholders
+        hosts.append(unhexlify(name))
+        db.execute(sql, hosts)
+        db.commit()
+        return '{"error": 0}'
+
+@app.route('/api/content/<hosts>/<name>', methods=['POST'])
+def api_content_upload(hosts, name):
+    try:
+        hosts = hosts.split(',')
+        name = unhexlify(name)
+        files = request.files['file']
+
+        filename = hashlib.md5(name).hexdigest()+'.upload'
+        print name, filename
+        files.save(os.path.join(webconfig.UPLOAD_DIR, filename))
+
+        with closing(connect_db()) as db:
+            placeholders = ','.join('?'*len(hosts))
+            sql = 'SELECT id FROM hosts WHERE hosts.name IN (%s)' % placeholders
+            cur = db.execute(sql, hosts)
+            entries = [row[0] for row in cur.fetchall()]
+            for x in entries:
+                try:
+                    db.execute('INSERT INTO content(host_id,name) VALUES (?,?)', (x, name))
+                except sqlite3.IntegrityError:
+                    pass
+            db.commit()
+
+        return '{"error": 0}'
+    except Exception, e:
+        raise e
+
+
+#==========default page==========
 @app.route('/')
 def index_handler():
     return send_from_directory('webroot', 'index.html')
