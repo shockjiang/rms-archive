@@ -13,9 +13,12 @@ class rmsCmdClient(ndn_client.rmsClientBase):
     def __init__(self, host, pemFile):
         super(rmsCmdClient, self).__init__(host, rmsCmdClient.APP_NAME, pemFile)
 
-    def ExecuteWait(self, cmd, timeout = None):
-        self.Send(cmd, timeout)
-        status,content = self.Recv(timeout)
+    def ExecuteWait(self, cmd, cmd_timeout = None, send_timeout = 1.0):
+        self.Send(cmd, send_timeout)
+        status,content = self.Recv(cmd_timeout)
+        if status == None:
+            self.DiscardCurrentResult()
+            return 'Executing timed out'
         return content
 
 

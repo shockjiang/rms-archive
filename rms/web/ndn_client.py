@@ -93,6 +93,7 @@ class rmsClientBase(object):
 
     def __init__(self, host, app, pemFile):
         self.recv_queue = Queue.Queue()
+        self.result_queue = Queue.Queue()
         self.name_prefix = "/{}/rms/{}".format(host, app)
         self.session_id = ''
         self.seq = 0
@@ -147,6 +148,8 @@ class rmsClientBase(object):
             self.session_id = data['session']
             self.isConnected = True
             self.state = STATE_IDLE
+            thread.start_new_thread(self._recv_thread, tuple())
+            log.debug('connect successfully')
         except Queue.Empty:
             raise Exception('Authorization timed out')
         except Exception, e:
@@ -163,32 +166,58 @@ class rmsClientBase(object):
             raise Exception('Not idle')
         data = self._encrypt(data)
         self.seq += 1
+        self.state = STATE_WAIT_RECV
         self.ndn_interface.send(self.name_prefix + '/{}/{}/'.format(self.session_id, self.seq) + data, timeout)
 
-    def Recv(self, timeout = None):
-        """Receive data from server (may block)"""
+    def _recv_thread(self):
         while True:
             try:
-                item = self.recv_queue.get(True, timeout)
-            except:
-                return None, None
+                item = self.recv_queue.get()
+            except Exception, e:
+                log.error(e)
+                continue
 
             if item.status == QueueItem.STATUS_TIME_OUT:
                 log.info("send timed out %s" % item.name)
                 self.state = STATE_IDLE
-                return None, None
-            data = item.content
-            try:
-                (seq, status, content) = self._decode_response(data)
-                seq = int(seq)
-            except Exception, e:
                 continue
-            if seq != self.seq:
-                log.warn("sequence number error, {} expected, but {} received".format(self.seq, seq))
+
+            if self.state != STATE_WAIT_RECV:
+                log.warn('content received in a wrong state %d'%self.state)
                 continue
-            else:
+
+            if item.status in [QueueItem.STATUS_BAD, QueueItem.STATUS_UNVERIFIED]:
+                log.warn('got bad content')
                 self.state = STATE_IDLE
-                return (status, content)
+            elif item.status == QueueItem.STATUS_OK:
+                log.debug('got content')
+                try:
+                    (seq, status, content) = self._decode_response(item.content)
+                    seq = int(seq)
+                except Exception, e:
+                    log.error("unable to decode content, %s" % e)
+                else:
+                    if seq != self.seq:
+                        log.warn("sequence number error, {} expected, but {} received".format(self.seq, seq))
+                    else:
+                        self.result_queue.put_nowait((status, content))
+                        self.state = STATE_IDLE
+            else:
+                log.error('got unknown QueueItem')
+
+    def Recv(self, timeout = None):
+        """Receive data from server (may block)"""
+        try:
+            item = self.result_queue.get(True, timeout)
+            return item
+        except:
+            return (None, None)
+
+    def DiscardCurrentResult(self):
+        if self.state != STATE_WAIT_RECV:
+            log.warn('not waiting for result')
+        else:
+            self.state = STATE_IDLE
 
     def Stop(self):
         self.ndn_interface.stop()
