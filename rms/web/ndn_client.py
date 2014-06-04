@@ -30,7 +30,20 @@ class rmsClientInterface(pyndn.Closure):
         self.handle = pyndn.NDN()
         self.recv_queue = recv_queue
 
-    def send(self, interest, timeout):
+    def send(self, interest, timeout, retries = 3):
+        self.retries = retries
+        self.doSend(interest, timeout)
+
+    def retry(self, interest):
+        if not self.retries:
+            self.recv_queue.put_nowait(QueueItem(interest, QueueItem.STATUS_TIME_OUT))
+            return pyndn.RESULT_OK
+        else:
+            self.retries -= 1
+            print('interest timed out, retrying...')
+            return pyndn.RESULT_REEXPRESS
+
+    def doSend(self, interest, timeout):
         templ = pyndn.Interest()
         templ.answerOriginKind = 0
         templ.childSelctor = 1
@@ -49,8 +62,7 @@ class rmsClientInterface(pyndn.Closure):
             return pyndn.RESULT_OK
 
         if kind == pyndn.UPCALL_INTEREST_TIMED_OUT:
-            self.recv_queue.put_nowait(QueueItem(upcallInfo.Interest.name, QueueItem.STATUS_TIME_OUT))
-            return pyndn.RESULT_OK
+            return self.retry(upcallInfo.Interest.name)
 
         # make sure we're getting sane responses
         if not kind in [pyndn.UPCALL_CONTENT,
@@ -71,7 +83,10 @@ class rmsClientInterface(pyndn.Closure):
 
         return pyndn.RESULT_OK
 
-
+STATE_NOT_RUN = -1
+STATE_NOT_AUTH = 0
+STATE_IDLE = 1
+STATE_WAIT_RECV = 2
 class rmsClientBase(object):
     """Base class of RMS client application"""
 
@@ -83,15 +98,16 @@ class rmsClientBase(object):
         self.isConnected = False
         self.pemFile = pemFile
         self.cipher = None
+        self.state = STATE_NOT_RUN
 
-        self.thread_started = False
         thread.start_new_thread(self._ndn_thread, tuple())
-        while not self.thread_started:
+        #wait for thread to start
+        while self.state == STATE_NOT_RUN:
             time.sleep(0)
 
     def _ndn_thread(self):
         self.ndn_interface = rmsClientInterface(self.recv_queue)
-        self.thread_started = True
+        self.state = STATE_NOT_AUTH
         self.ndn_interface.start()
 
     def _encrypt(self, data):
@@ -112,6 +128,8 @@ class rmsClientBase(object):
     def Connect(self, timeout):
         """Shake hand and authorize with server (may block)"""
         auth = security.Auth()
+        if self.state != STATE_NOT_AUTH:
+            raise ValueError
         self.isConnected = False
         self.ndn_interface.send(self.name_prefix + '/auth/{}'.format(hex(auth.getDHKey())), timeout)
 
@@ -127,6 +145,7 @@ class rmsClientBase(object):
             
             self.session_id = data['session']
             self.isConnected = True
+            self.state = STATE_IDLE
         except Queue.Empty:
             raise Exception('Authorization timed out')
         except Exception, e:
@@ -139,22 +158,36 @@ class rmsClientBase(object):
         """Send data to server (may block)"""
         if not self.isConnected:
             raise Exception('Not connected to server')
+        if self.state != STATE_IDLE:
+            raise Exception('Not idle')
         data = self._encrypt(data)
-        self.ndn_interface.send(self.name_prefix + '/{}/{}/'.format(self.session_id, self.seq) + data, timeout)
         self.seq += 1
+        self.ndn_interface.send(self.name_prefix + '/{}/{}/'.format(self.session_id, self.seq) + data, timeout)
 
     def Recv(self, timeout = None):
         """Receive data from server (may block)"""
-        try:
-            item = self.recv_queue.get(True, timeout)
-            if item.status != QueueItem.STATUS_OK:
+        while True:
+            try:
+                item = self.recv_queue.get(True, timeout)
+            except:
+                return None, None
+
+            if item.status == QueueItem.STATUS_TIME_OUT:
+                print("send timed out %s" % item.name)
+                self.state = STATE_IDLE
                 return None, None
             data = item.content
-            (seq, status, content) = self._decode_response(data)
-            return (status, content)
-        except Exception, e:
-            print e
-            return None, None
+            try:
+                (seq, status, content) = self._decode_response(data)
+                seq = int(seq)
+            except Exception, e:
+                continue
+            if seq != self.seq:
+                print("sequence number error, {} expected, but {} received".format(self.seq, seq))
+                continue
+            else:
+                self.state = STATE_IDLE
+                return (status, content)
 
     def Stop(self):
         self.ndn_interface.stop()

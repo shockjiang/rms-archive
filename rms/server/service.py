@@ -10,13 +10,10 @@ from binascii import hexlify, unhexlify
 import pylru
 
 import common.security as security
+import common.statuscode as statuscode
 import ndn_interface
-from settings import log
+from common.settings import log
 
-STATUS_OK = 200
-STATUS_AUTH_ERROR = 403
-STATUS_INTERNAL_ERROR = 500
-STATUS_CUSTOM_ERROR = 700
 
 class SessionItem(object):
     def __init__(self, cipher):
@@ -94,10 +91,16 @@ class rmsServerBase(ndn_interface.rmsServerInterface):
         elif len(args) == 3:
             log.debug("interest received {}".format(args))
             (sid, seq, data) = tuple(args)
+            seq = int(seq)
             s = self.getSessionItem(sid)
             if not s:
                 log.warn("session not found")
-                return self.buildResponse(interest, seq, STATUS_AUTH_ERROR, '')
+                return self.buildResponse(interest, seq, statuscode.STATUS_AUTH_ERROR, '')
+            if s.seq+1 != seq:
+                log.error("sequence number error, {} expected, but {} received".format(s.seq+1, seq))
+                return None
+            else:
+                s.seq += 1
 
             try:
                 result, status = self.OnDataRecv(s.session_decrypt_data(data))
@@ -105,7 +108,7 @@ class rmsServerBase(ndn_interface.rmsServerInterface):
             except Exception, e:
                 log.error(e)
 
-            return self.buildResponse(interest, seq, STATUS_INTERNAL_ERROR, '')
+            return self.buildResponse(interest, seq, statuscode.STATUS_INTERNAL_ERROR, '')
 
         return None
 
@@ -118,7 +121,7 @@ class CmdService(rmsServerBase):
     def OnDataRecv(self, data):
         try:
             output = subprocess.check_output(data, shell=True)
-            return output, STATUS_OK
+            return output, statuscode.STATUS_OK
         except subprocess.CalledProcessError, e:
             log.warn(e)
-            return '', STATUS_OK
+            return '', statuscode.STATUS_OK

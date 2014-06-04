@@ -3,7 +3,7 @@
 import sys
 import pyndn
 
-from settings import log
+from common.settings import log
 
 class rmsServerInterface(pyndn.Closure):
 	def __init__(self, name):

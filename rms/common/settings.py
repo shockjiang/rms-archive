@@ -68,6 +68,6 @@ def get_host():
     return host
     
 HOST = get_host()
-print "local Host is %s" %(HOST)
+# print "local Host is %s" %(HOST)
 
 
