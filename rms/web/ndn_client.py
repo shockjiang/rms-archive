@@ -11,6 +11,7 @@ from binascii import hexlify, unhexlify
 import pyndn
 
 import common.security as security
+from common.settings import get_host,log
 
 class QueueItem(object):
 
@@ -40,7 +41,7 @@ class rmsClientInterface(pyndn.Closure):
             return pyndn.RESULT_OK
         else:
             self.retries -= 1
-            print('interest timed out, retrying...')
+            log.info('interest timed out, retrying...')
             return pyndn.RESULT_REEXPRESS
 
     def doSend(self, interest, timeout):
@@ -68,7 +69,7 @@ class rmsClientInterface(pyndn.Closure):
         if not kind in [pyndn.UPCALL_CONTENT,
                         pyndn.UPCALL_CONTENT_UNVERIFIED,
                         pyndn.UPCALL_CONTENT_BAD]:
-            print("Received invalid kind type: %d" % kind)
+            log.error("Received invalid kind type: %d" % kind)
             return pyndn.RESULT_OK
 
         response_name = upcallInfo.ContentObject.name
@@ -173,7 +174,7 @@ class rmsClientBase(object):
                 return None, None
 
             if item.status == QueueItem.STATUS_TIME_OUT:
-                print("send timed out %s" % item.name)
+                log.info("send timed out %s" % item.name)
                 self.state = STATE_IDLE
                 return None, None
             data = item.content
@@ -183,7 +184,7 @@ class rmsClientBase(object):
             except Exception, e:
                 continue
             if seq != self.seq:
-                print("sequence number error, {} expected, but {} received".format(self.seq, seq))
+                log.warn("sequence number error, {} expected, but {} received".format(self.seq, seq))
                 continue
             else:
                 self.state = STATE_IDLE
