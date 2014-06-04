@@ -11,6 +11,7 @@ from binascii import hexlify, unhexlify
 import pyndn
 
 import common.security as security
+import common.statuscode
 from common.settings import get_host,log
 
 class QueueItem(object):
@@ -97,7 +98,6 @@ class rmsClientBase(object):
         self.name_prefix = "/{}/rms/{}".format(host, app)
         self.session_id = ''
         self.seq = 0
-        self.isConnected = False
         self.pemFile = pemFile
         self.cipher = None
         self.state = STATE_NOT_RUN
@@ -125,15 +125,16 @@ class rmsClientBase(object):
         space2 = data.find(' ', space1+1)
         if space2 == -1:
             raise ValueError
-        return (int(data[0:space1]), int(data[space1+1:space2]), self._decrypt(data[space2+1:]))
+        return (int(data[0:space1]), int(data[space1+1:space2]), data[space2+1:])
 
     def Connect(self, timeout):
         """Shake hand and authorize with server (may block)"""
+        self.connect_timeout = timeout
         auth = security.Auth()
         if self.state != STATE_NOT_AUTH:
             raise ValueError
-        self.isConnected = False
-        self.ndn_interface.send(self.name_prefix + '/auth/{}'.format(hex(auth.getDHKey())), timeout)
+        log.debug('Connecting to %s' % self.name_prefix)
+        self.ndn_interface.send(self.name_prefix + '/auth/{}'.format(hex(auth.getDHKey())), timeout, 0)
 
         try:
             reply = self.recv_queue.get(True, timeout)
@@ -146,7 +147,6 @@ class rmsClientBase(object):
             self.cipher = security.AESCipher(auth.genMasterKey())
             
             self.session_id = data['session']
-            self.isConnected = True
             self.state = STATE_IDLE
             thread.start_new_thread(self._recv_thread, tuple())
             log.debug('connect successfully')
@@ -155,13 +155,19 @@ class rmsClientBase(object):
         except Exception, e:
             raise e
 
+    def ReConnect(self, timeout):
+        self.state = STATE_NOT_AUTH
+        self.session_id = ''
+        self.seq = 0
+        self.cipher = None
+
+        self.Connect(timeout)
+
     def IsConnected(self):
-        return self.isConnected
+        return self.state in [STATE_IDLE, STATE_WAIT_RECV]
 
     def Send(self, data, timeout):
         """Send data to server (may block)"""
-        if not self.isConnected:
-            raise Exception('Not connected to server')
         if self.state != STATE_IDLE:
             raise Exception('Not idle')
         data = self._encrypt(data)
@@ -193,9 +199,18 @@ class rmsClientBase(object):
                 log.debug('got content')
                 try:
                     (seq, status, content) = self._decode_response(item.content)
+                    if int(status) == common.statuscode.STATUS_AUTH_ERROR:
+                        log.warn("session expired")
+                        self.ReConnect(self.connect_timeout or 10.0)
+                        raise UserWarning
                     seq = int(seq)
+                    content = self._decrypt(content)
+                except UserWarning:
+                    pass
                 except Exception, e:
                     log.error("unable to decode content, %s" % e)
+                except:
+                    pass
                 else:
                     if seq != self.seq:
                         log.warn("sequence number error, {} expected, but {} received".format(self.seq, seq))

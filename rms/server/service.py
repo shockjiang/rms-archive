@@ -73,7 +73,10 @@ class rmsServerBase(ndn_interface.rmsServerInterface):
         return None
 
     def getSessionItem(self, session_id):
-        return self.session_store[session_id]
+        try:
+            return self.session_store[session_id]
+        except KeyError:
+            return None
 
     def handleRequest(self, interest):
         length = len(self.service_prefix)
@@ -125,3 +128,12 @@ class CmdService(rmsServerBase):
         except subprocess.CalledProcessError, e:
             log.warn(e)
             return '', statuscode.STATUS_OK
+
+class PingService(rmsServerBase):
+    """Handle ping request"""
+    SERVICE_NAME = "Ping"
+    def __init__(self, host, pubFile):
+        super(PingService, self).__init__(host, PingService.SERVICE_NAME, pubFile)
+
+    def OnDataRecv(self, data):
+        return 'ping', statuscode.STATUS_OK        
