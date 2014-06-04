@@ -145,7 +145,7 @@ rmsApp.controller('CmdLine', function ($scope,HostModel,$resource,CmdResultModel
             var h = hs[i];
             if(h.selected){
                 h.status = 'run';
-                runCmd.get({host: h.name, cmd: $scope.inputcmd},(function(h){return function(content){
+                runCmd.get({host: h.name, cmd: $scope.inputcmd.toHex()},(function(h){return function(content){
                     h.status = 'ok';
                     CmdResultModel.add(h.name, content.text)
                 }})(h),(function(h){return function(){

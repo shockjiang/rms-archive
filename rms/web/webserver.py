@@ -13,8 +13,8 @@ from flask import request
 from werkzeug.routing import BaseConverter
 
 import webconfig
-import execute
-
+import backend
+from common.settings import log
 
 class RegexConverter(BaseConverter):
 
@@ -26,6 +26,7 @@ class RegexConverter(BaseConverter):
 app = Flask(__name__)
 app.url_map.converters['regex'] = RegexConverter
 
+backend_cmd = None
 
 def connect_db():
     return sqlite3.connect(webconfig.DATABASE)
@@ -62,15 +63,13 @@ def api_hostlint():
 @app.route('/api/execute/<host>/<cmd>')
 def api_execute(host, cmd):
     try:
-        with open(webconfig.PRIVATE_KEY_FILE) as f:
-            client = execute.rmsCmdClient(str(host), f.read())
-        client.Connect(6.0)
-        ret = client.ExecuteWait(str(cmd), 5.0)
+        cmd = unhexlify(cmd)
+        ret = backend_cmd.ExecuteOneCmd(host, cmd)
         if ret == None:
             raise ValueError
         return json.dumps(dict(text=ret))
     except Exception, e:
-        print(e)
+        log.error(e)
         abort(500)
 
 #==========content management related operations==========
@@ -111,7 +110,7 @@ def api_content_upload(hosts, name):
         files = request.files['file']
 
         filename = hashlib.md5(name).hexdigest()+'.upload'
-        print name, filename
+        log.debug('args: {} {}'.format(name, filename))
         files.save(os.path.join(webconfig.UPLOAD_DIR, filename))
 
         with closing(connect_db()) as db:
@@ -137,4 +136,7 @@ def index_handler():
     return send_from_directory('webroot', 'index.html')
 
 if __name__ == '__main__':
-    app.run(host=webconfig.LISTEN_IP, debug=webconfig.DEBUG)
+    global backend_cmd
+    backend_cmd = backend.CmdLineBackend()
+    backend_cmd.Start()
+    app.run(host=webconfig.LISTEN_IP, debug=webconfig.DEBUG, use_reloader=False)

@@ -156,6 +156,7 @@ class rmsClientBase(object):
             raise e
 
     def ReConnect(self, timeout):
+        log.debug('Reconnecting to %s' % self.name_prefix)
         self.state = STATE_NOT_AUTH
         self.session_id = ''
         self.seq = 0
