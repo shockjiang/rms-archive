@@ -27,6 +27,7 @@ app = Flask(__name__)
 app.url_map.converters['regex'] = RegexConverter
 
 backend_cmd = None
+backend_sys = None
 
 def connect_db():
     return sqlite3.connect(webconfig.DATABASE)
@@ -129,6 +130,32 @@ def api_content_upload(hosts, name):
     except Exception, e:
         raise e
 
+#==========system management related operations==========
+@app.route('/api/sys/<hosts>/reboot', methods=['GET'])
+def api_sys_reboot(hosts):
+    try:
+        hosts = hosts.split(',')
+        for x in hosts:
+            backend_sys.RebootHost(x)
+
+        return '{"error": 0}'
+
+    except Exception, e:
+        log.error(e)
+        raise e
+
+@app.route('/api/sys/*/status', methods=['GET'])
+def api_sys_all_status():
+    try:
+        with closing(connect_db()) as db:
+            cur = db.execute('select name from hosts order by id')
+            result = dict()
+            for row in cur.fetchall():
+                result[row[0]] = backend_sys.GetHostStatus(row[0])
+            return json.dumps(result)
+    except Exception, e:
+        log.error(e)
+        raise e
 
 #==========default page==========
 @app.route('/')
@@ -136,7 +163,9 @@ def index_handler():
     return send_from_directory('webroot', 'index.html')
 
 if __name__ == '__main__':
-    global backend_cmd
+    global backend_cmd, backend_sys
+    backend_sys = backend.SysMonitorBackend()
     backend_cmd = backend.CmdLineBackend()
     backend_cmd.Start()
+    backend_sys.Start()
     app.run(host=webconfig.LISTEN_IP, debug=webconfig.DEBUG, use_reloader=False)

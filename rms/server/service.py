@@ -5,6 +5,8 @@ import uuid
 import json
 import urllib
 import subprocess
+import sys
+import os
 from binascii import hexlify, unhexlify
 
 import pylru
@@ -129,11 +131,16 @@ class CmdService(rmsServerBase):
             log.warn(e)
             return '', statuscode.STATUS_OK
 
-class PingService(rmsServerBase):
-    """Handle ping request"""
-    SERVICE_NAME = "Ping"
+class SystemService(rmsServerBase):
+    """Handle system management request"""
+    SERVICE_NAME = "Sys"
     def __init__(self, host, pubFile):
-        super(PingService, self).__init__(host, PingService.SERVICE_NAME, pubFile)
+        super(SystemService, self).__init__(host, SystemService.SERVICE_NAME, pubFile)
 
     def OnDataRecv(self, data):
-        return 'ping', statuscode.STATUS_OK        
+        if data == 'ping':
+            return 'ping', statuscode.STATUS_OK
+        elif data == 'reboot':
+            log.info('Rebooting...')
+            os.execl(sys.executable, *([sys.executable]+sys.argv))
+            return 'failed', statuscode.STATUS_CUSTOM_ERROR

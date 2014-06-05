@@ -258,3 +258,24 @@ rmsApp.controller('ContentUpload', function ($scope, HostModel, $rootScope, $upl
         $scope.pendingFiles = $files;
     };
 })
+
+rmsApp.controller('HostStatus', function ($scope, $http){
+    $scope.hosts = []
+    $scope.reload_status = function(){
+        $http.get('api/sys/*/status').success(function(host_list){
+            for (var i in host_list) {
+                var item = host_list[i];
+                if(item){
+                    item.name = i;
+                    item.updated = new Date(item.updated*1000)
+                    $scope.hosts.push(item);
+                }
+            }
+        });
+    }
+    $scope.btn_reboot = function(h){
+        $http.get('api/sys/'+h+'/reboot').success(function(){
+
+        });
+    }
+})
