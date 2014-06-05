@@ -35,6 +35,7 @@ class sys_service_thread(threading.Thread):
         s.start()
 
 if __name__ == "__main__":
+    signal.signal(signal.SIGHUP, signal.SIG_IGN)
     h = get_host()
     cmd_service_thread(h).start()
     sys_service_thread(h).start()
