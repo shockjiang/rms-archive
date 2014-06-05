@@ -3,6 +3,7 @@
 
 import Queue
 import thread
+import threading
 import json
 import urllib
 import time
@@ -13,6 +14,9 @@ import pyndn
 import common.security as security
 import common.statuscode
 from common.settings import get_host,log
+
+class RMSAuthException(Exception):
+    pass
 
 class QueueItem(object):
 
@@ -101,7 +105,9 @@ class rmsClientBase(object):
         self.pemFile = pemFile
         self.cipher = None
         self.state = STATE_NOT_RUN
+        self.auth_cond = threading.Condition()
 
+        thread.start_new_thread(self._recv_thread, tuple())
         thread.start_new_thread(self._ndn_thread, tuple())
         #wait for thread to start
         while self.state == STATE_NOT_RUN:
@@ -134,13 +140,17 @@ class rmsClientBase(object):
         if self.state != STATE_NOT_AUTH:
             raise ValueError
         log.debug('Connecting to %s' % self.name_prefix)
+        self.auth_cond.acquire()
+        self._auth_result = None
         self.ndn_interface.send(self.name_prefix + '/auth/{}'.format(hex(auth.getDHKey())), timeout, 0)
+        self.auth_cond.wait(timeout)
+        self.auth_cond.release()
+
+        if not self._auth_result:
+            raise RMSAuthException('Authorization timed out')
 
         try:
-            reply = self.recv_queue.get(True, timeout)
-            if reply.status != QueueItem.STATUS_OK:
-                raise ValueError('Authorization with server failed')
-            data = json.loads(reply.content)
+            data = json.loads(self._auth_result)
 
             auth.setOtherDHKey(long(data['randS'], 0))
             auth.decryptPreMasterKey(unhexlify(data['preMaster']), self.pemFile)
@@ -148,12 +158,10 @@ class rmsClientBase(object):
             
             self.session_id = data['session']
             self.state = STATE_IDLE
-            thread.start_new_thread(self._recv_thread, tuple())
-            log.debug('connect successfully')
-        except Queue.Empty:
-            raise Exception('Authorization timed out')
+            log.debug('Connected')
         except Exception, e:
-            raise e
+            log.error(e)
+            raise RMSAuthException('Illegal authorization response received')
 
     def ReConnect(self, timeout):
         log.debug('Reconnecting to %s' % self.name_prefix)
@@ -163,6 +171,19 @@ class rmsClientBase(object):
         self.cipher = None
 
         self.Connect(timeout)
+
+    def _auth_timed_out(self):
+        log.error('Authorization timed out')
+        self.auth_cond.acquire()
+        self._auth_result = None
+        self.auth_cond.notify_all()
+        self.auth_cond.release()
+
+    def _auth_response(self, content):
+        self.auth_cond.acquire()
+        self._auth_result = content
+        self.auth_cond.notify_all()
+        self.auth_cond.release()
 
     def IsConnected(self):
         return self.state in [STATE_IDLE, STATE_WAIT_RECV]
@@ -184,6 +205,14 @@ class rmsClientBase(object):
                 log.error(e)
                 continue
 
+            if self.state == STATE_NOT_AUTH:
+                #handle auth response
+                if item.status == QueueItem.STATUS_TIME_OUT:
+                    self._auth_timed_out()
+                else:
+                    self._auth_response(item.content)
+                continue
+
             if item.status == QueueItem.STATUS_TIME_OUT:
                 log.info("send timed out %s" % item.name)
                 self.state = STATE_IDLE
@@ -203,10 +232,10 @@ class rmsClientBase(object):
                     if int(status) == common.statuscode.STATUS_AUTH_ERROR:
                         log.warn("session expired")
                         self.ReConnect(self.connect_timeout or 10.0)
-                        raise UserWarning
+                        raise RMSAuthException #quit normal receiving procedure
                     seq = int(seq)
                     content = self._decrypt(content)
-                except UserWarning:
+                except RMSAuthException:
                     pass
                 except Exception, e:
                     log.error("unable to decode content, %s" % e)
