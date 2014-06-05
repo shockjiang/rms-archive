@@ -168,4 +168,4 @@ if __name__ == '__main__':
     backend_cmd = backend.CmdLineBackend()
     backend_cmd.Start()
     backend_sys.Start()
-    app.run(host=webconfig.LISTEN_IP, debug=webconfig.DEBUG, use_reloader=False)
+    app.run(host=webconfig.LISTEN_IP, debug=webconfig.DEBUG, use_reloader=False, threaded=True)
