@@ -4,6 +4,8 @@
 from copy import copy
 import threading
 import os
+import os.path
+import sys
 import sqlite3
 import json
 import time
@@ -14,7 +16,10 @@ import hashlib
 import webconfig
 import execute
 import systool
-from common.settings import log
+import content
+from common.settings import log, get_ndnflow_path, get_host
+sys.path.append(get_ndnflow_path()[0])
+import ndn_flow
 
 def connect_db():
     return sqlite3.connect(webconfig.DATABASE)
@@ -148,4 +153,81 @@ class SysMonitorBackend(object):
 
     def RebootHost(self, h):
         self.thread.reboot(h)
+
+
+class ContentManagementBackend(object):
+    class _thread(threading.Thread):
+        def __init__(self):
+            super(ContentManagementBackend._thread, self).__init__()
+            self.daemon = True
+            self.hosts = getHostList()
+            with open(webconfig.PRIVATE_KEY_FILE) as f:
+                pem = f.read()
+                self.clients = [content.rmsContentClient(h, pem, webconfig.MOD_CMDLINE_TIMEOUT) for h in self.hosts]
+
+        def connect_hosts(self):
+            for x in self.clients:
+                try:
+                    x.Connect(webconfig.NDN_CONNECT_TIMEOUT)
+                except Exception, e:
+                    log.error(e)
+
+        def run(self):
+            while True:
+                for i in range(len(self.clients)):
+                    try:
+                        x = self.clients[i]
+                        if not x.IsConnected():
+                            x.ReConnect(webconfig.NDN_CONNECT_TIMEOUT)
+                    except Exception, e:
+                        log.error(e)
+
+                time.sleep(30.0)
+
+        def publish(self, target, name, remote, key):
+            log.debug('publish %s from %s' % (name, remote))
+            for h in target:
+                idx = self.hosts.index(h)
+                self.clients[idx].SendFile(name, remote, key)
+
+        def remove(self, target, name):
+            idx = self.hosts.index(target)
+            return self.clients[idx].DeleteFile(name)
+
+    def __init__(self):
+        self.thread = ContentManagementBackend._thread()
+        self.tmp_dir = os.path.join(get_ndnflow_path()[1], 'rms_tmp/')
+        self.tmp_naming = "/{}/rms/{}".format(get_host(), 'pub_dir')
+        try:
+            os.makedirs(self.tmp_dir)
+        except Exception, e:
+            pass
+
+    def Start(self):
+        self.start_producer()
+        self.thread.start()
+        self.thread.connect_hosts()
+
+    def PublishFiles(self, hosts, name, flaskFileUp):
+        key = 'something fun'
+        filename = hashlib.md5(name).hexdigest()+'.upload'
+        log.debug('args: {} {}'.format(name, filename))
+        flaskFileUp.save(os.path.join(self.tmp_dir, filename))
+
+        self.thread.publish(hosts, name, self.tmp_naming+'/'+filename, key)
+
+    def DeleteFiles(self, host, name):
+        try:
+            return self.thread.remove(host, name)
+        except Exception,e:
+            log.error(e)
+            return False
+
+    def start_producer(self):
+        def targetfunc():
+            p = ndn_flow.FlowProducer(self.tmp_naming, self.tmp_dir)
+            p.start()
+        th = threading.Thread(target=targetfunc)
+        th.setDaemon(True)
+        th.start()
 

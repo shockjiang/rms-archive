@@ -28,6 +28,7 @@ app.url_map.converters['regex'] = RegexConverter
 
 backend_cmd = None
 backend_sys = None
+backend_content = None
 
 def connect_db():
     return sqlite3.connect(webconfig.DATABASE)
@@ -94,11 +95,17 @@ def api_content_list(hosts = '', Filter = None):
 
 @app.route('/api/content/<hosts>/<name>', methods=['DELETE'])
 def api_content_del(hosts, name):
+    name = unhexlify(name)
     hosts = hosts.split(',')
+
+    # ask hosts to delete file
+    hosts = filter(lambda h:backend_content.DeleteFiles(h,name), hosts)
+    log.debug("successfully deleted {}: {}".format(name,hosts))
+
     with closing(connect_db()) as db:
         placeholders = ','.join('?'*len(hosts))
         sql = 'DELETE FROM content WHERE id IN (SELECT content.id FROM content JOIN hosts ON (hosts.id = content.host_id) WHERE hosts.name IN (%s) AND content.name=?)' % placeholders
-        hosts.append(unhexlify(name))
+        hosts.append(name)
         db.execute(sql, hosts)
         db.commit()
         return '{"error": 0}'
@@ -110,9 +117,7 @@ def api_content_upload(hosts, name):
         name = unhexlify(name)
         files = request.files['file']
 
-        filename = hashlib.md5(name).hexdigest()+'.upload'
-        log.debug('args: {} {}'.format(name, filename))
-        files.save(os.path.join(webconfig.UPLOAD_DIR, filename))
+        backend_content.PublishFiles(hosts, name, files)
 
         with closing(connect_db()) as db:
             placeholders = ','.join('?'*len(hosts))
@@ -165,7 +170,9 @@ def index_handler():
 if __name__ == '__main__':
     global backend_cmd, backend_sys
     backend_sys = backend.SysMonitorBackend()
+    backend_content = backend.ContentManagementBackend()
     backend_cmd = backend.CmdLineBackend()
     backend_cmd.Start()
+    backend_content.Start()
     backend_sys.Start()
     app.run(host=webconfig.LISTEN_IP, debug=webconfig.DEBUG, use_reloader=False, threaded=True)
