@@ -5,8 +5,11 @@ import uuid
 import json
 import urllib
 import subprocess
+import threading
 import sys
+import Queue
 import os
+import os.path
 from binascii import hexlify, unhexlify
 
 import pylru
@@ -14,8 +17,9 @@ import pylru
 import common.security as security
 import common.statuscode as statuscode
 import ndn_interface
-from common.settings import log
-
+from common.settings import log, get_ndnflow_path
+sys.path.append(get_ndnflow_path()[0])
+import ndn_flow
 
 class SessionItem(object):
     def __init__(self, cipher):
@@ -144,3 +148,89 @@ class SystemService(rmsServerBase):
             log.info('Rebooting...')
             os.execl(sys.executable, *([sys.executable]+sys.argv))
             return 'failed', statuscode.STATUS_CUSTOM_ERROR
+
+class ContentService(rmsServerBase):
+    """Content management service"""
+    SERVICE_NAME = "Content"
+    def __init__(self, host, pubFile):
+        super(ContentService, self).__init__(host, ContentService.SERVICE_NAME, pubFile)
+        self.ndnflow_dir = get_ndnflow_path()[1]
+        self.thread = ContentService.content_service_thread()
+        self.thread.start()
+
+    class content_service_thread(threading.Thread):
+        def __init__(self):
+            super(ContentService.content_service_thread, self).__init__()
+            self.daemon = True
+            self.uploading_queue = Queue.Queue()
+            self.uploading_set = set()
+            self.uploading_mutex = threading.Lock()
+
+        def run(self):
+            while True:
+                try:
+                    (name, remotename, key) = self.uploading_queue.get()
+                except:
+                    continue
+                try:
+                    with open(name, 'wb') as f:
+                        consumer = ndn_flow.FlowConsumer(999, str(remotename), fout=f)
+                        consumer.start()
+                except Exception, e:
+                    log.error("failed to fetch file: %s" % e)
+                    # import traceback
+                    # traceback.print_exc()
+                    try:
+                        os.unlink(name)
+                    except Exception, e:
+                        log.error("cannot delete %s %s" % (name,e))
+                finally:
+                    self.mark_uploading(name, False)
+
+        def mark_uploading(self, name, b):
+            self.uploading_mutex.acquire()
+            try:
+                if b:
+                    log.debug('set uploading mark %s' % name)
+                    self.uploading_set.add(name)
+                else:
+                    log.debug('remove uploading mark %s' % name)
+                    self.uploading_set.remove(name)
+            except Exception, e:
+                log.error(e)
+            finally:
+                self.uploading_mutex.release()
+
+        def new_uploading(self, name, remotename, key):
+            self.mark_uploading(name, True)
+            try:
+                self.uploading_queue.put_nowait((name, remotename, key))
+            except Exception, e:
+                log.error("failed to put into queue: %s" % e)
+                self.mark_uploading(name, False)
+    
+    def name2filepath(self, name):
+        #TODO: restrict file in ndnflow_dir
+        while name.startswith('/'):
+            name = name[1:]
+        p = os.path.join(self.ndnflow_dir, name)
+        log.debug('name:{} path:{}'.format(name, p))
+        return p
+
+    def OnDataRecv(self, data):
+        req = json.loads(data)
+        if req['op'] == 'delete':
+            name = self.name2filepath(req['name'])
+            try:
+                os.unlink(name)
+                return 'ok', statuscode.STATUS_OK
+            except Exception, e:
+                log.warn('Deleting {}: {}'.format(name, e))
+                return str(e), statuscode.STATUS_CUSTOM_ERROR
+        elif req['op'] == 'send':
+            name = self.name2filepath(req['name'])
+            self.thread.new_uploading(name, req['remotename'], req['key'])
+            return 'ok', statuscode.STATUS_OK
+
+        else:
+            return 'unknown operation', statuscode.STATUS_CUSTOM_ERROR

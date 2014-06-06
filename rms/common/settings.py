@@ -19,6 +19,9 @@ import os.path
 import logging
 import socket
 
+NDNFLOW_PATH = '$HOME/ndnflow'
+NDNFLOW_CONTENT_PATH = '$HOME/ndnflow/dir'
+
 log = logging.getLogger("ndnrms") #root logger, debug, info, warn, error, critical
 
 #format = logging.Formatter('%(levelname)8s:%(funcName)23s:%(lineno)3d: %(message)s')
@@ -70,4 +73,7 @@ def get_host():
 HOST = get_host()
 # print "local Host is %s" %(HOST)
 
+def get_ndnflow_path():
+    return (os.path.expandvars(NDNFLOW_PATH),
+        os.path.expandvars(NDNFLOW_CONTENT_PATH))
 
