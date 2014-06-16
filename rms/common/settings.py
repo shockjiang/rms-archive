@@ -72,7 +72,8 @@ def get_host():
     else:
         #host = hostname
         host = "local"
-
+    
+    return host
     
 HOST = get_host()
 # print "local Host is %s" %(HOST)
