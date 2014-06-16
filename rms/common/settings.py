@@ -65,10 +65,14 @@ def get_host():
         host = "seu"
     elif hostname == "clarence-VirtualBox": #node is down
         host = "vt"
+    elif hostname == "httpndn": #node is down
+        host = "ushw"
+    elif hostname == "ndngateway7": #node is down
+        host = "h101"
     else:
         #host = hostname
         host = "local"
-    return host
+
     
 HOST = get_host()
 # print "local Host is %s" %(HOST)
