@@ -25,9 +25,9 @@ def connect_db():
 
 def reset():
     db = connect_db()
-    sql = "delete from hosts where id>0"
+    sql = "delete from hosts where id>=0"
     try:
-        #db.execute(sql)
+        db.execute(sql)
         pass
     
     except:
@@ -39,7 +39,8 @@ def reset():
             print "add router: %s" %(router.name)
             db.execute("insert into hosts (name, ip, port, username, password, workdir) values (?, ?, ?, ?, ?, ?)" , (router.name, router.ip, router.port, router.username, router.password, router.workdir))
             db.commit()
-        except:
+        except sqlite3.IntegrityError as e:
+            print e
             print "FAILED add router: %s" %(router.name)
 
     db.commit()    
