@@ -3,7 +3,12 @@
 '''
 This script aims to manage for the host, especially to executes commands on all managed host  
 
+@input
 
+@output:
+
+@e.g:
+python mgr.py [-c cmd] [-d host1, host2, ...]
 
 @author: Xiaoke Jiang <shock.jiang@gmail.com>
 @version: 0.1, 28 May, 2014

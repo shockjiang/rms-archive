@@ -18,3 +18,4 @@ create table content (
 );
 CREATE UNIQUE INDEX host_name_idx ON `content`(`host_id`,`name`);
 CREATE INDEX contentname_idx ON `content`(`name`);
+

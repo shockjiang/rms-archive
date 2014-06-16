@@ -128,13 +128,17 @@ def get_host():
         host = "seu"
     elif hostname == "clarence-VirtualBox": #node is down
         host = "vt"
+    elif hostname == "httpndn": #node is down
+        host = "ushw"
+    elif hostname == "ndngateway7": #node is down
+        host = "h101"
     else:
         #host = hostname
         host = "local"
 
     return host
 HOST = get_host()
-print "local Host is %s" %(HOST)
+log.info("local Host is %s" %(HOST))
 
 
 class NDNRouter(object):
@@ -155,26 +159,29 @@ ROUTERS = {"h243": NDNRouter("h243", "202.112.49.243", 6363, "none", "none"),
            "super": NDNRouter("super", "202.112.237.206", 6363, "none", "none"),
            "telcom": NDNRouter("telcom", "59.108.48.13", 6363, "none", "none"),
            "j06": NDNRouter("j06", "166.111.132.147", 6363, "none", "none"),
-           "l07": NDNRouter("l07", "166.111.132.216", 9695, "none", "none"),
+           "h101": NDNRouter("h101", "166.111.132.216", 6363, "none", "none"),
+           "ushw": NDNRouter("ushw", "101.6.30.83", 6363, "none", "none"),
            }
-
 def get_neighbors(name):
     if name == "h243":
-        neighbors = [ROUTERS["tbed"], ROUTERS["seu"], ROUTERS["j06"]]
+        neighbors = ["tbed", "seu", "j06"]
     elif name == "j06":
-        neighbors = [ROUTERS["h243"], ROUTERS["l07"]]
-    elif name == "l07":
-        neighbors = [ROUTERS["seu"], ROUTERS["j06"]]
+        neighbors = ["h243", "h101", "ushw"]
+    elif name == "h101":
+        neighbors = ["seu", "j06", "ushw"]
     elif name == "seu":
-        neighbors = [ROUTERS["super"], ROUTERS["h243"], ROUTERS["l07"]]
+        neighbors = ["super", "h243", "h101"]
     elif name == "super":
-        neighbors = [ROUTERS["tbed"], ROUTERS["seu"], ROUTERS["telcom"]]
+        neighbors = ["tbed", "seu", "telcom"]
     elif name == "tbed":
-        neighbors = [ROUTERS["super"], ROUTERS["h243"], ROUTERS["telcom"]]
+        neighbors = ["super", "h243", "telcom"]
     elif name == "telcom":
-        neighbors = [ROUTERS["tbed"], ROUTERS["super"]]
+        neighbors = ["tbed", "super"]
+    elif name == "ushw":
+        neighbors = ["j06", "h101"]
     else:
-        neighbors = [ROUTERS["h243"]]
+        neighbors = ["h243"]
         
     return neighbors
+
 
